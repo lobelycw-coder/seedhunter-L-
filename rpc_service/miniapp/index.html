@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>SeedHunter account</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root{--bg:#0b0d10;--card:#14181d;--line:#222932;--txt:#e8edf3;--dim:#8b97a5;--acc:#37d67a;--warn:#e8b04b;--bad:#e8604b}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.5 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:16px 14px 60px}
+  header{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:14px}
+  h1{font-size:17px;margin:0;letter-spacing:.02em}
+  .badge{font-size:11px;padding:3px 8px;border-radius:99px;border:1px solid var(--line);color:var(--dim)}
+  .badge.premium{color:#0b0d10;background:var(--acc);border-color:var(--acc);font-weight:700}
+  section{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--dim);margin:0 0 10px}
+  .row{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--line);font-size:14px}
+  .row:last-child{border-bottom:0}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;word-break:break-all}
+  button{font:inherit;border-radius:10px;border:1px solid var(--line);background:#1c232b;color:var(--txt);padding:9px 12px;cursor:pointer}
+  button.primary{background:var(--acc);border-color:var(--acc);color:#08110c;font-weight:700}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  input,select{width:100%;padding:9px 10px;border-radius:10px;border:1px solid var(--line);background:#0f1318;color:var(--txt);font:inherit}
+  label{display:block;font-size:12px;color:var(--dim);margin:8px 0 4px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .state{color:var(--dim);font-size:13px;padding:10px 0}
+  .err{color:var(--bad);font-size:13px}
+  .ok{color:var(--acc);font-size:13px}
+  .pill{font-size:11px;padding:2px 7px;border-radius:99px;border:1px solid var(--line)}
+  .pill.up{color:var(--acc);border-color:#1f4d33}
+  .pill.down{color:var(--bad);border-color:#4d2320}
+  .pill.unknown{color:var(--dim)}
+  .hint{font-size:12px;color:var(--dim);margin-top:6px}
+  .hidden{display:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>SeedHunter account</h1>
+  <span id="tier" class="badge">guest</span>
+</header>
+
+<div id="boot" class="state">Connecting…</div>
+
+<section id="authBox" class="hidden">
+  <h2>Sign in</h2>
+  <p class="hint">In Telegram this happens automatically. On the web, create an account or log in.</p>
+  <div class="grid">
+    <button id="btnRegister">Create account</button>
+    <button id="btnLoginToggle">Log in</button>
+  </div>
+  <div id="loginForm" class="hidden">
+    <label for="loginProject">Project ID</label>
+    <input id="loginProject" class="mono" placeholder="SH-...">
+    <label for="loginSecret">Account secret</label>
+    <input id="loginSecret" type="password" autocomplete="off">
+    <div style="margin-top:10px"><button class="primary" id="btnLogin">Log in</button></div>
+  </div>
+  <div id="regResult" class="hidden">
+    <label>Project ID</label><div id="regProject" class="mono"></div>
+    <label>Account secret (shown once)</label><div id="regSecret" class="mono"></div>
+  </div>
+  <div id="authErr" class="err"></div>
+</section>
+
+<div id="app" class="hidden">
+  <section>
+    <h2>Account</h2>
+    <div class="row"><span>Project</span><span id="projectId" class="mono">—</span></div>
+    <div class="row"><span>Plan</span><span id="plan">—</span></div>
+    <div class="row"><span>RPC today</span><span id="quota">—</span></div>
+    <div class="row"><span>Public page</span><span id="publicState">—</span></div>
+    <div class="grid" style="margin-top:10px">
+      <button id="btnPublic">Toggle public</button>
+      <button id="btnLogout">Log out</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Networks</h2>
+    <div id="networks" class="state">Loading…</div>
+  </section>
+
+  <section>
+    <h2>Wallets</h2>
+    <div id="wallets" class="state">Loading…</div>
+    <label for="newWallet">Create wallet for network</label>
+    <div class="grid">
+      <select id="newWallet"></select>
+      <button id="btnWallet">Create</button>
+    </div>
+    <div id="walletMsg" class="hint"></div>
+  </section>
+
+  <section>
+    <h2>Balances</h2>
+    <div id="balances" class="state">Loading…</div>
+  </section>
+
+  <section>
+    <h2>Subscription</h2>
+    <div class="row"><span>Premium price</span><span id="price">—</span></div>
+    <div id="invoices" class="state">Loading…</div>
+    <label for="currency">Pay with</label>
+    <div class="grid">
+      <select id="currency"></select>
+      <button id="btnInvoice">New invoice</button>
+    </div>
+    <div id="invoiceBox" class="hidden">
+      <label>Send exactly to</label>
+      <div id="invoiceAddr" class="mono"></div>
+      <div id="invoiceAmount" class="mono" style="margin-top:6px"></div>
+      <div class="hint">Then paste the transaction id:</div>
+      <input id="invoiceTx" class="mono" placeholder="txid">
+      <div style="margin-top:8px"><button class="primary" id="btnVerify">Verify payment</button></div>
+      <div id="invoiceMsg" class="hint"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Withdraw</h2>
+    <div id="wdState" class="hint"></div>
+    <label for="wdNetwork">Network</label>
+    <select id="wdNetwork"></select>
+    <label for="wdDest">Destination address</label>
+    <input id="wdDest" class="mono" autocomplete="off">
+    <label for="wdAmount">Amount (raw units)</label>
+    <input id="wdAmount" inputmode="numeric" placeholder="e.g. 1000000000000000">
+    <label for="wdPin">Withdrawal PIN (6 digits)</label>
+    <input id="wdPin" inputmode="numeric" maxlength="6" autocomplete="off">
+    <div class="grid" style="margin-top:10px">
+      <button class="primary" id="btnWithdraw">Request</button>
+      <button id="btnPin">Set PIN</button>
+    </div>
+    <div id="wdMsg" class="hint"></div>
+    <div id="withdrawals" class="state">Loading…</div>
+  </section>
+</div>
+
+<script>
+const S = {token: localStorage.getItem("sh_token") || "", project: ""};
+const el = (id) => document.getElementById(id);
+const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+
+function show(id, on) { el(id).classList.toggle("hidden", !on); }
+function msg(id, text, cls) { const n = el(id); n.className = cls || "hint"; n.textContent = text || ""; }
+
+async function api(path, opts = {}) {
+  const headers = Object.assign({"Content-Type": "application/json"}, opts.headers || {});
+  if (S.token) headers.Authorization = "Bearer " + S.token;
+  const res = await fetch(path, Object.assign({}, opts, {headers}));
+  let body = null;
+  try { body = await res.json(); } catch (_) {}
+  if (!res.ok) {
+    const e = new Error((body && body.error && body.error.message) || res.statusText);
+    e.status = res.status; e.code = body && body.error && body.error.code;
+    if (res.status === 401 && S.token) { S.token = ""; localStorage.removeItem("sh_token"); }
+    throw e;
+  }
+  return body;
+}
+
+async function boot() {
+  if (tg) { tg.ready(); tg.expand(); }
+  try {
+    if (tg && tg.initData) {
+      const r = await api("/api/auth/telegram", {method: "POST",
+        body: JSON.stringify({init_data: tg.initData})});
+      S.token = r.session_token; localStorage.setItem("sh_token", S.token);
+      enter();
+      return;
+    }
+  } catch (e) { msg("boot", "Telegram sign-in failed: " + e.message, "err"); }
+  if (S.token) { enter(); return; }
+  el("boot").classList.add("hidden");
+  show("authBox", true);
+}
+
+async function enter() {
+  el("boot").classList.add("hidden");
+  show("authBox", false); show("app", true);
+  try {
+    const me = await api("/api/me");
+    S.project = me.project_id;
+    el("projectId").textContent = me.project_id;
+    el("plan").textContent = me.tier;
+    el("quota").textContent = me.limits.rpc_used_today + " / " + me.limits.rpc_daily;
+    el("publicState").textContent = me.is_public ? "on" : "off";
+    el("tier").textContent = me.tier;
+    el("tier").className = "badge" + (me.tier === "premium" ? " premium" : "");
+    el("wdState").textContent = me.withdrawals_enabled
+      ? "Live withdrawals are enabled."
+      : "Withdrawals are in dry mode (SH_WITHDRAWALS_ENABLED=0).";
+    if (!me.pin_set) msg("wdMsg", "No PIN set yet — set one before withdrawing.");
+  } catch (e) {
+    if (e.status === 401) { show("app", false); show("authBox", true); return; }
+    msg("boot", e.message, "err"); show("boot", true);
+  }
+  loadMeta(); loadWallets(); loadBalances(); loadSubscription(); loadWithdrawals();
+}
+
+async function loadMeta() {
+  try {
+    const m = await api("/api/meta");
+    el("price").textContent = "$" + m.plans[1].price_usd + " / month";
+    const nSel = el("newWallet"), wSel = el("wdNetwork"), cSel = el("currency");
+    nSel.innerHTML = ""; wSel.innerHTML = ""; cSel.innerHTML = "";
+    m.networks.forEach(n => {
+      nSel.add(new Option(n.name, n.name));
+      wSel.add(new Option(n.name, n.name));
+    });
+    m.currencies.forEach(c => cSel.add(new Option(c, c)));
+    el("networks").className = "";
+    el("networks").innerHTML = m.networks.map(n =>
+      `<div class="row"><span>${n.name}</span>
+       <span class="pill ${n.status}">${n.status}</span></div>`).join("");
+  } catch (e) { msg("networks", e.message, "err"); }
+}
+
+async function loadWallets() {
+  try {
+    const r = await api("/api/wallets");
+    if (!r.wallets.length) { msg("wallets", "No wallet yet."); return; }
+    el("wallets").className = "";
+    el("wallets").innerHTML = r.wallets.map(w =>
+      `<div class="row"><span>${w.network}</span>
+       <span class="mono">${w.address.slice(0, 10)}…${w.address.slice(-6)}</span></div>`).join("");
+  } catch (e) { msg("wallets", e.message, "err"); }
+}
+
+async function loadBalances() {
+  try {
+    const r = await api("/api/balances");
+    if (!r.balances.length) { msg("balances", "Nothing to show."); return; }
+    el("balances").className = "";
+    el("balances").innerHTML = r.balances.map(b => b.error
+      ? `<div class="row"><span>${b.network}</span><span class="err">${b.error}</span></div>`
+      : `<div class="row"><span>${b.network}</span><span class="mono">${b.raw} ${b.symbol}</span></div>`).join("");
+  } catch (e) { msg("balances", e.message, "err"); }
+}
+
+async function loadSubscription() {
+  try {
+    const r = await api("/api/subscriptions");
+    el("tier").textContent = r.tier;
+    if (!r.invoices.length) { msg("invoices", "No invoices yet."); return; }
+    el("invoices").className = "";
+    el("invoices").innerHTML = r.invoices.map(i =>
+      `<div class="row"><span>${i.currency} · ${i.amount_raw}</span>
+       <span class="pill">${i.status}</span></div>`).join("");
+  } catch (e) { msg("invoices", e.message, "err"); }
+}
+
+async function loadWithdrawals() {
+  try {
+    const r = await api("/api/withdrawals");
+    if (!r.withdrawals.length) { msg("withdrawals", "No withdrawals yet."); return; }
+    el("withdrawals").className = "";
+    el("withdrawals").innerHTML = r.withdrawals.map(w =>
+      `<div class="row"><span class="mono">${w.wd_ref}</span>
+       <span class="pill">${w.status}</span></div>`).join("");
+  } catch (e) { msg("withdrawals", e.message, "err"); }
+}
+
+// --- events
+el("btnRegister").onclick = async () => {
+  try {
+    const r = await api("/api/auth/register", {method: "POST", body: JSON.stringify({})});
+    el("regProject").textContent = r.project_id;
+    el("regSecret").textContent = r.auth_secret;
+    show("regResult", true);
+    msg("authErr", "Save the secret, then the session opens.", "ok");
+    S.token = r.session_token; localStorage.setItem("sh_token", S.token);
+    setTimeout(enter, 1800);
+  } catch (e) { msg("authErr", e.message, "err"); }
+};
+el("btnLoginToggle").onclick = () => show("loginForm", el("loginForm").classList.contains("hidden"));
+el("btnLogin").onclick = async () => {
+  try {
+    const r = await api("/api/auth/login", {method: "POST",
+      body: JSON.stringify({project_id: el("loginProject").value.trim(),
+                            auth_secret: el("loginSecret").value})});
+    S.token = r.session_token; localStorage.setItem("sh_token", S.token); enter();
+  } catch (e) { msg("authErr", e.message, "err"); }
+};
+el("btnLogout").onclick = async () => {
+  try { await api("/api/auth/logout", {method: "POST"}); } catch (_) {}
+  S.token = ""; localStorage.removeItem("sh_token");
+  show("app", false); show("authBox", true);
+};
+el("btnPublic").onclick = async () => {
+  try {
+    const me = await api("/api/me");
+    const r = await api("/api/me/public", {method: "POST",
+      body: JSON.stringify({is_public: !me.is_public})});
+    el("publicState").textContent = r.is_public ? "on" : "off";
+    msg("walletMsg", r.is_public ? "Public page: /w/" + me.project_id : "Public page off.", "ok");
+  } catch (e) { msg("walletMsg", e.message, "err"); }
+};
+el("btnWallet").onclick = async () => {
+  try {
+    await api("/api/wallets", {method: "POST",
+      body: JSON.stringify({network: el("newWallet").value})});
+    msg("walletMsg", "Wallet created.", "ok"); loadWallets(); loadBalances();
+  } catch (e) { msg("walletMsg", e.message, "err"); }
+};
+el("btnInvoice").onclick = async () => {
+  try {
+    const inv = await api("/api/subscriptions/invoice", {method: "POST",
+      body: JSON.stringify({currency: el("currency").value})});
+    show("invoiceBox", true);
+    el("invoiceAddr").textContent = inv.address;
+    el("invoiceAmount").textContent = inv.amount_raw + " " + inv.currency +
+      " (≈ $" + inv.amount_usd + ", expires " + new Date(inv.expires_at * 1000).toLocaleTimeString() + ")";
+    el("invoiceBox").dataset.ref = inv.invoice_ref;
+    msg("invoiceMsg", "Waiting for payment.");
+  } catch (e) { msg("invoices", e.message, "err"); }
+};
+el("btnVerify").onclick = async () => {
+  try {
+    const r = await api("/api/payments/verify", {method: "POST",
+      body: JSON.stringify({invoice_ref: el("invoiceBox").dataset.ref,
+                            txid: el("invoiceTx").value.trim()})});
+    msg("invoiceMsg", r.state + (r.reason ? " — " + r.reason : ""),
+        r.state === "paid" ? "ok" : "hint");
+    loadSubscription();
+  } catch (e) { msg("invoiceMsg", e.message, "err"); }
+};
+el("btnPin").onclick = async () => {
+  const pin = el("wdPin").value.trim();
+  try {
+    await api("/api/auth/pin", {method: "POST", body: JSON.stringify({pin})});
+    msg("wdMsg", "PIN saved.", "ok");
+  } catch (e) {
+    if (e.code === "pin_current_required") {
+      const current = prompt("Current PIN:");
+      try {
+        await api("/api/auth/pin", {method: "POST", body: JSON.stringify({pin, current_pin: current})});
+        msg("wdMsg", "PIN changed.", "ok");
+      } catch (err) { msg("wdMsg", err.message, "err"); }
+    } else msg("wdMsg", e.message, "err");
+  }
+};
+el("btnWithdraw").onclick = async () => {
+  const key = "idem-" + Date.now();
+  try {
+    const r = await api("/api/withdrawals", {method: "POST", body: JSON.stringify({
+      network: el("wdNetwork").value, destination: el("wdDest").value.trim(),
+      amount_raw: Number(el("wdAmount").value), pin: el("wdPin").value.trim(),
+      idempotency_key: key})});
+    msg("wdMsg", r.wd_ref + " " + r.status, "ok");
+    loadWithdrawals();
+  } catch (e) { msg("wdMsg", e.message, "err"); }
+};
+
+// public deep link: /w/SH-xxxx
+const publicId = location.pathname.startsWith("/w/") ? location.pathname.slice(3) : "";
+if (publicId && !(tg && tg.initData)) {
+  fetch("/api/public/" + encodeURIComponent(publicId)).then(async (res) => {
+    if (!res.ok) throw new Error("profile is not public");
+    const p = await res.json();
+    el("boot").classList.add("hidden");
+    show("authBox", false); show("app", true);
+    el("projectId").textContent = p.project_id;
+    el("plan").textContent = p.tier;
+    el("tier").textContent = p.tier;
+    el("quota").textContent = "—";
+    el("publicState").textContent = "on";
+    el("wallets").className = "";
+    el("wallets").innerHTML = p.wallets.map(w =>
+      `<div class="row"><span>${w.network}</span><span class="mono">${w.address}</span></div>`).join("");
+    ["balances", "invoices", "withdrawals", "wdState"].forEach(id => {
+      const n = el(id); if (n) n.textContent = "Sign in to view.";
+    });
+  }).catch((e) => msg("boot", e.message, "err"));
+} else {
+  boot();
+}
+</script>
+</body>
+</html>
