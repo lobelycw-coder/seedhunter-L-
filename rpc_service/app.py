@@ -22,6 +22,8 @@ from pydantic import BaseModel, Field
 from . import auth, db, payment_monitor, rpc_engine, subscriptions, wallet_accounts, withdrawals
 from .settings import Settings, get_settings
 
+from . import bridge_api
+
 BASE_DIR = Path(__file__).resolve().parent
 log = logging.getLogger("rpc_service")
 
