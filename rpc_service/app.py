@@ -1,12 +1,12 @@
-"""HTTP surface for the add-on: API, JSON-RPC proxy, website and Mini App.
+"""HTTP surface: API, JSON-RPC proxy, website and Mini App.
 
-One process, one backend, two front doors (Telegram Mini App and plain web).
-Nothing here imports seedhunter.bot or seedhunter.worker, so no hunter process,
-no ProcessPoolExecutor and no cursor file is touched.
+One process, one backend, two front doors. Imports no hunter worker, so no
+ProcessPoolExecutor and no cursor file is touched.
 """
 from __future__ import annotations
 
 import asyncio
+import base64
 import collections
 import logging
 import secrets
@@ -19,10 +19,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
-from . import auth, db, payment_monitor, rpc_engine, subscriptions, wallet_accounts, withdrawals
+from . import (auth, bridge_api, db, payment_monitor, rpc_engine, subscriptions,
+               wallet_accounts, withdrawals)
 from .settings import Settings, get_settings
-
-from . import bridge_api
 
 BASE_DIR = Path(__file__).resolve().parent
 log = logging.getLogger("rpc_service")
@@ -33,9 +32,12 @@ CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline' https://telegram.o
        "base-uri 'none'; form-action 'self'")
 
 
-class RateLimiter:
-    """Per-key sliding window, process local."""
+class HTTPProblem(Exception):
+    def __init__(self, code: str, message: str, status: int):
+        self.code, self.message, self.status = code, message, status
 
+
+class RateLimiter:
     def __init__(self) -> None:
         self.hits: dict[str, collections.deque] = collections.defaultdict(collections.deque)
 
@@ -62,7 +64,6 @@ def error(code: str, message: str, status: int, **extra) -> JSONResponse:
     return JSONResponse({"error": {"code": code, "message": message, **extra}}, status_code=status)
 
 
-# ------------------------------------------------------------------ bodies
 class TelegramBody(BaseModel):
     init_data: str = Field(min_length=8, max_length=8192)
 
@@ -135,9 +136,17 @@ def build_app(cfg: Settings | None = None) -> FastAPI:
                 task.cancel()
             await engine.close()
 
-    app = FastAPI(title="SeedHunter add-on", version="0.1.0", lifespan=lifespan,
+    app = FastAPI(title="SeedHunter add-on", version="0.2.0", lifespan=lifespan,
                   docs_url="/api/docs", openapi_url="/api/openapi.json")
     app.state.cfg = cfg
+
+    @app.exception_handler(HTTPProblem)
+    async def _problem(_request: Request, exc: HTTPProblem):
+        return error(exc.code, exc.message, exc.status)
+
+    @app.exception_handler(auth.AuthError)
+    async def _auth(_request: Request, exc: auth.AuthError):
+        return error(exc.code, exc.message, exc.status)
 
     if cfg.cors_origins:
         app.add_middleware(CORSMiddleware, allow_origins=cfg.cors_origins,
@@ -158,7 +167,6 @@ def build_app(cfg: Settings | None = None) -> FastAPI:
     def engine() -> rpc_engine.RpcEngine:
         return engine_holder["engine"]
 
-    # ------------------------------------------------------- dependencies
     def principal(request: Request, authorization: str | None = Header(default=None)):
         try:
             token = auth.bearer(authorization)
@@ -175,7 +183,6 @@ def build_app(cfg: Settings | None = None) -> FastAPI:
         if not x_admin_token or not secrets.compare_digest(x_admin_token, cfg.admin_token):
             raise HTTPProblem("admin_forbidden", "bad admin token", 403)
 
-    # -------------------------------------------------------------- pages
     @app.get("/", include_in_schema=False)
     async def index():
         return FileResponse(BASE_DIR / "miniapp" / "index.html")
@@ -189,7 +196,6 @@ def build_app(cfg: Settings | None = None) -> FastAPI:
         return {"status": "ok", "networks": len(engine().networks),
                 "monitor": cfg.monitor_enabled, "time": int(time.time())}
 
-    # --------------------------------------------------------------- meta
     @app.get("/api/meta")
     async def meta():
         return {"plans": [{"id": "free", "label": "Free", "price_usd": 0},
@@ -208,7 +214,6 @@ def build_app(cfg: Settings | None = None) -> FastAPI:
     async def networks_health():
         return {"probes": await engine().probe_all()}
 
-    # --------------------------------------------------------------- auth
     @app.post("/api/auth/telegram")
     async def auth_telegram(body: TelegramBody, request: Request):
         try:
@@ -226,8 +231,7 @@ def build_app(cfg: Settings | None = None) -> FastAPI:
                                      request.headers.get("user-agent"))
         db.audit(cfg.db_path, account["id"], "auth.telegram", {"tg_id": tg_id},
                  client_ip(request, cfg))
-        return {"project_id": account["project_id"], "tier": account["tier"],
-                **session}
+        return {"project_id": account["project_id"], "tier": account["tier"], **session}
 
     @app.post("/api/auth/register")
     async def auth_register(body: RegisterBody, request: Request):
@@ -267,7 +271,6 @@ def build_app(cfg: Settings | None = None) -> FastAPI:
             return error(exc.code, exc.message, exc.status)
         return {"ok": True}
 
-    # ---------------------------------------------------------------- me
     @app.get("/api/me")
     async def me(who=Depends(principal)):
         account = auth.get_account_by_id(cfg.db_path, who.account_id)
@@ -276,11 +279,13 @@ def build_app(cfg: Settings | None = None) -> FastAPI:
         used = db.usage_today(cfg.db_path, who.account_id,
                               time.strftime("%Y-%m-%d", time.gmtime()))
         return {"project_id": account["project_id"], "tier": tier,
-                "premium_until": account["premium_until"], "is_public": bool(account["is_public"]),
+                "premium_until": account["premium_until"],
+                "is_public": bool(account["is_public"]),
                 "pin_set": bool(account["pin_hash"]),
                 "withdrawal_suspended": bool(account["withdrawal_suspended"]),
                 "withdrawals_enabled": cfg.withdrawals_enabled,
-                "limits": {"rpc_per_minute": rate, "rpc_daily": daily, "rpc_used_today": used}}
+                "limits": {"rpc_per_minute": rate, "rpc_daily": daily,
+                           "rpc_used_today": used}}
 
     @app.post("/api/me/public")
     async def set_public(body: PublicBody, who=Depends(principal)):
@@ -294,7 +299,6 @@ def build_app(cfg: Settings | None = None) -> FastAPI:
             return error("not_public", "no public profile for that project id", 404)
         return profile
 
-    # ------------------------------------------------------------ wallets
     @app.get("/api/wallets")
     async def list_wallets(who=Depends(principal)):
         rows = wallet_accounts.list_wallets(cfg.db_path, who.account_id)
@@ -306,8 +310,7 @@ def build_app(cfg: Settings | None = None) -> FastAPI:
         network = body.network.strip().lower()
         ok, why = signer.available(cfg, network)
         if not ok:
-            return error("signer_unavailable",
-                         f"cannot derive an address yet: {why}", 503)
+            return error("signer_unavailable", f"cannot derive an address yet: {why}", 503)
         try:
             if network == "solana":
                 address = signer.solana_address_of(cfg, cfg.kms_key_sol)
@@ -320,7 +323,7 @@ def build_app(cfg: Settings | None = None) -> FastAPI:
         except (wallet_accounts.WalletError, signer.SignerError) as exc:
             return error(getattr(exc, "code", "wallet_error"), str(exc),
                          getattr(exc, "status", 400))
-        except Exception as exc:                              # boto errors
+        except Exception as exc:
             return error("kms_error", f"{type(exc).__name__}: {exc}", 502)
         return wallet_accounts.public_wallet(wallet)
 
@@ -339,7 +342,6 @@ def build_app(cfg: Settings | None = None) -> FastAPI:
     async def transactions(who=Depends(principal)):
         return {"transactions": wallet_accounts.history(cfg.db_path, who.account_id)}
 
-    # ------------------------------------------------------- subscriptions
     @app.get("/api/subscriptions")
     async def subscription(who=Depends(principal)):
         account = auth.get_account_by_id(cfg.db_path, who.account_id)
@@ -374,7 +376,6 @@ def build_app(cfg: Settings | None = None) -> FastAPI:
         except rpc_engine.RpcError as exc:
             return error(exc.code, exc.message, exc.status, **{"detail": exc.detail})
 
-    # --------------------------------------------------------- withdrawals
     @app.get("/api/withdrawals")
     async def list_withdrawals(who=Depends(principal)):
         rows = db.fetch_all(cfg.db_path, "SELECT * FROM withdrawals WHERE account_id=? "
@@ -396,7 +397,6 @@ def build_app(cfg: Settings | None = None) -> FastAPI:
             return error(exc.code, exc.message, exc.status)
         return record
 
-    # --------------------------------------------------------------- admin
     @app.post("/api/admin/withdrawals/{wd_ref}/approve", dependencies=[Depends(admin_token)])
     async def approve_withdrawal(wd_ref: str):
         row = db.fetch_one(cfg.db_path, "SELECT * FROM withdrawals WHERE wd_ref=?", (wd_ref,))
@@ -405,12 +405,7 @@ def build_app(cfg: Settings | None = None) -> FastAPI:
         record = dict(row)
         if record["status"] not in ("requested", "failed"):
             return error("bad_state", f"status is {record['status']}", 409)
-        result = await withdrawals.approve_and_sign(cfg, engine(), cfg.db_path, record)
-        if result["status"] == "signed" and record["network"] == "solana":
-            payload = [{"jsonrpc": "2.0", "id": 1, "method": "sendTransaction",
-                        "params": [result["raw"], {"encoding": "base64"}]}]
-            result["raw"] = "signed-hex"
-        return result
+        return await withdrawals.approve_and_sign(cfg, engine(), cfg.db_path, record)
 
     @app.post("/api/admin/withdrawals/{wd_ref}/broadcast", dependencies=[Depends(admin_token)])
     async def broadcast(wd_ref: str):
@@ -419,11 +414,16 @@ def build_app(cfg: Settings | None = None) -> FastAPI:
             return error("withdrawal_missing", "not found", 404)
         if row["status"] != "signed" or not row["txid"]:
             return error("bad_state", "needs a signed raw transaction", 409)
-        method = "sendTransaction" if row["network"] == "solana" else "eth_sendRawTransaction"
+        if row["network"] == "solana":
+            method = "sendTransaction"
+            params = [base64.b64encode(bytes.fromhex(row["txid"])).decode(),
+                      {"encoding": "base64"}]
+        else:
+            method, params = "eth_sendRawTransaction", [row["txid"]]
         try:
-            rows = await engine().forward(row["network"], {"jsonrpc": "2.0", "id": 1,
-                                                           "method": method,
-                                                           "params": [row["txid"]]})
+            rows = await engine().forward(row["network"],
+                                          {"jsonrpc": "2.0", "id": 1, "method": method,
+                                           "params": params})
         except rpc_engine.RpcError as exc:
             return error(exc.code, exc.message, exc.status)
         txid = rows[0].get("result")
@@ -448,7 +448,6 @@ def build_app(cfg: Settings | None = None) -> FastAPI:
     async def probe():
         return {"probes": await engine().probe_all()}
 
-    # ----------------------------------------------------------- rpc proxy
     @app.post("/rpc/{network}")
     async def rpc(network: str, request: Request, who=Depends(principal)):
         account = auth.get_account_by_id(cfg.db_path, who.account_id)
@@ -466,33 +465,15 @@ def build_app(cfg: Settings | None = None) -> FastAPI:
         try:
             result = await engine().forward(network, payload)
         except rpc_engine.RpcError as exc:
-            return error(exc.code, exc.message, exc.status, **({"detail": exc.detail}
-                                                               if exc.detail else {}))
+            return error(exc.code, exc.message, exc.status,
+                         **({"detail": exc.detail} if exc.detail else {}))
         db.bump_usage(cfg.db_path, who.account_id, today)
         return result
 
-    return app
-
-
-class HTTPProblem(Exception):
-    def __init__(self, code: str, message: str, status: int):
-        self.code, self.message, self.status = code, message, status
-
-
-def create_default_app() -> FastAPI:
-    app = build_app()
-
-    @app.exception_handler(HTTPProblem)
-    async def _problem(_request: Request, exc: HTTPProblem):
-        return error(exc.code, exc.message, exc.status)
-
-    @app.exception_handler(auth.AuthError)
-    async def _auth(_request: Request, exc: auth.AuthError):
-        return error(exc.code, exc.message, exc.status)
-
+    bridge_api.register(app, cfg, admin_token)
     return app
 
 
 logging.basicConfig(level=get_settings().log_level,
                     format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-app = create_default_app()
+app = build_app()
