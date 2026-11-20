@@ -21,12 +21,12 @@ class Sweeper:
         self.s, self.pool, self.store, self.notifier = s, pool, store, notifier
 
     async def _send(self, chain, tx: dict, key: str, resign_tip: int = 0) -> str | None:
+        body = {k: v for k, v in tx.items() if not k.startswith("_")}
         if resign_tip:
-            tx = dict(tx)
-            tx["maxPriorityFeePerGas"] = hex(resign_tip)
-            base = int(tx["maxFeePerGas"], 16) - int(tx.get("_old_tip", "0x0"), 16)
-            tx["maxFeePerGas"] = hex(base + resign_tip)
-        signed = EA.sign_transaction(tx, key)
+            base = int(tx["maxFeePerGas"], 16) - int(tx["_old_tip"], 16)
+            body["maxPriorityFeePerGas"] = hex(resign_tip)
+            body["maxFeePerGas"] = hex(base + resign_tip)
+        signed = EA.sign_transaction(body, key)
         raw = signed.raw_transaction.hex()
         if not raw.startswith("0x"):
             raw = "0x" + raw
@@ -68,8 +68,8 @@ class Sweeper:
         return await escalate.confirm(
             self.pool, chain.name, h, self.s.escalate_rounds,
             self.s.tip_escalation,
-            lambda t: self._send(chain, tx, key, t))
-
+            lambda t: self._send(chain, tx, key, t), tip)
+            
     async def asset(self, chain, asset: dict, address, key) -> str | None:
         base, tip = await self._fee(chain)
         rows = await self.pool.post(chain.name, [{
@@ -105,6 +105,7 @@ class Sweeper:
                     return done
                 nonce += 1
         return None
+        
 
     async def sol(self, chain, kp, address, balance, spl) -> None:
         dest = self.s.sweep.destination_sol
