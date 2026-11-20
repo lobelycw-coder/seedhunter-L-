@@ -72,7 +72,8 @@ def render(cfg: dict, profile, chains: list[str], probes: list[dict]) -> None:
             dead += 1
             print(f"   FAIL {p['chain']:<11} {p.get('error') or p.get('status')}")
     print(f"\n keyspace: {('%d seeds' % b['seed_space']) if b['seed_space'] else 'unbounded'}")
-    print(f" cost    : {('%.2f per 1M' % b['cost_per_million']) if b['cost_per_million'] else 'unset (SH_COST_PER_MILLION)'}")
+    print(" cost    : " + (("%.2f per 1M" % b["cost_per_million"])
+                           if b["cost_per_million"] else "unset (SH_COST_PER_MILLION)"))
     print(f" dead endpoints: {dead}")
     print("=" * 66 + "\n")
 
