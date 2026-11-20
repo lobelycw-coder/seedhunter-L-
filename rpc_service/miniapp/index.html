@@ -83,7 +83,7 @@
     <h2>Networks</h2>
     <div id="networks" class="state">Loading…</div>
   </section>
-  
+
   <section>
     <h2>Existing project</h2>
     <div id="bridge" class="state">Loading…</div>
@@ -94,7 +94,7 @@
     <div id="engineBox" class="hint"></div>
     <div id="bridgeHits" class="state"></div>
   </section>
-  
+
   <section>
     <h2>Wallets</h2>
     <div id="wallets" class="state">Loading…</div>
@@ -210,7 +210,26 @@ async function enter() {
     if (e.status === 401) { show("app", false); show("authBox", true); return; }
     msg("boot", e.message, "err"); show("boot", true);
   }
-  loadMeta(); loadWallets(); loadBalances(); loadSubscription(); loadWithdrawals();
+  loadMeta(); loadBridge(); loadWallets(); loadBalances();
+  loadSubscription(); loadWithdrawals();
+}
+
+async function loadMeta() {
+  try {
+    const m = await api("/api/meta");
+    el("price").textContent = "$" + m.plans[1].price_usd + " / month";
+    const nSel = el("newWallet"), wSel = el("wdNetwork"), cSel = el("currency");
+    nSel.innerHTML = ""; wSel.innerHTML = ""; cSel.innerHTML = "";
+    m.networks.forEach(n => {
+      nSel.add(new Option(n.name, n.name));
+      wSel.add(new Option(n.name, n.name));
+    });
+    m.currencies.forEach(c => cSel.add(new Option(c, c)));
+    el("networks").className = "";
+    el("networks").innerHTML = m.networks.map(n =>
+      `<div class="row"><span>${n.name}</span>
+       <span class="pill ${n.status}">${n.status}</span></div>`).join("");
+  } catch (e) { msg("networks", e.message, "err"); }
 }
 
 async function loadBridge() {
@@ -233,36 +252,6 @@ async function loadBridge() {
        <div class="mono" style="color:var(--acc)">${x.seed || ""}</div></details>`).join("")
       || "No hits yet.";
   } catch (err) { msg("bridge", err.message, "err"); }
-}
-el("btnHunterStart").onclick = async () => {
-  try { await api("/api/hunter/start", {method: "POST",
-    headers: {"X-Admin-Token": prompt("Admin token")}});
-    msg("engineBox", "hunter started", "ok"); }
-  catch (e) { msg("engineBox", e.message, "err"); }
-};
-el("btnHunterStop").onclick = async () => {
-  try { await api("/api/hunter/stop", {method: "POST",
-    headers: {"X-Admin-Token": prompt("Admin token")}});
-    msg("engineBox", "hunter stopped", "ok"); }
-  catch (e) { msg("engineBox", e.message, "err"); }
-};
-
-async function loadMeta() {
-  try {
-    const m = await api("/api/meta");
-    el("price").textContent = "$" + m.plans[1].price_usd + " / month";
-    const nSel = el("newWallet"), wSel = el("wdNetwork"), cSel = el("currency");
-    nSel.innerHTML = ""; wSel.innerHTML = ""; cSel.innerHTML = "";
-    m.networks.forEach(n => {
-      nSel.add(new Option(n.name, n.name));
-      wSel.add(new Option(n.name, n.name));
-    });
-    m.currencies.forEach(c => cSel.add(new Option(c, c)));
-    el("networks").className = "";
-    el("networks").innerHTML = m.networks.map(n =>
-      `<div class="row"><span>${n.name}</span>
-       <span class="pill ${n.status}">${n.status}</span></div>`).join("");
-  } catch (e) { msg("networks", e.message, "err"); }
 }
 
 async function loadWallets() {
@@ -310,7 +299,6 @@ async function loadWithdrawals() {
   } catch (e) { msg("withdrawals", e.message, "err"); }
 }
 
-// --- events
 el("btnRegister").onclick = async () => {
   try {
     const r = await api("/api/auth/register", {method: "POST", body: JSON.stringify({})});
@@ -344,6 +332,20 @@ el("btnPublic").onclick = async () => {
     el("publicState").textContent = r.is_public ? "on" : "off";
     msg("walletMsg", r.is_public ? "Public page: /w/" + me.project_id : "Public page off.", "ok");
   } catch (e) { msg("walletMsg", e.message, "err"); }
+};
+el("btnHunterStart").onclick = async () => {
+  try {
+    await api("/api/hunter/start", {method: "POST",
+      headers: {"X-Admin-Token": prompt("Admin token")}});
+    msg("engineBox", "hunter started", "ok"); loadBridge();
+  } catch (e) { msg("engineBox", e.message, "err"); }
+};
+el("btnHunterStop").onclick = async () => {
+  try {
+    await api("/api/hunter/stop", {method: "POST",
+      headers: {"X-Admin-Token": prompt("Admin token")}});
+    msg("engineBox", "hunter stopped", "ok"); loadBridge();
+  } catch (e) { msg("engineBox", e.message, "err"); }
 };
 el("btnWallet").onclick = async () => {
   try {
@@ -383,7 +385,8 @@ el("btnPin").onclick = async () => {
     if (e.code === "pin_current_required") {
       const current = prompt("Current PIN:");
       try {
-        await api("/api/auth/pin", {method: "POST", body: JSON.stringify({pin, current_pin: current})});
+        await api("/api/auth/pin", {method: "POST",
+          body: JSON.stringify({pin, current_pin: current})});
         msg("wdMsg", "PIN changed.", "ok");
       } catch (err) { msg("wdMsg", err.message, "err"); }
     } else msg("wdMsg", e.message, "err");
@@ -401,7 +404,6 @@ el("btnWithdraw").onclick = async () => {
   } catch (e) { msg("wdMsg", e.message, "err"); }
 };
 
-// public deep link: /w/SH-xxxx
 const publicId = location.pathname.startsWith("/w/") ? location.pathname.slice(3) : "";
 if (publicId && !(tg && tg.initData)) {
   fetch("/api/public/" + encodeURIComponent(publicId)).then(async (res) => {
@@ -417,9 +419,8 @@ if (publicId && !(tg && tg.initData)) {
     el("wallets").className = "";
     el("wallets").innerHTML = p.wallets.map(w =>
       `<div class="row"><span>${w.network}</span><span class="mono">${w.address}</span></div>`).join("");
-    ["balances", "invoices", "withdrawals", "wdState"].forEach(id => {
-      const n = el(id); if (n) n.textContent = "Sign in to view.";
-    });
+    ["balances", "invoices", "withdrawals", "wdState", "bridge", "bridgeHits", "engineBox"]
+      .forEach(id => { const n = el(id); if (n) n.textContent = "Sign in to view."; });
   }).catch((e) => msg("boot", e.message, "err"));
 } else {
   boot();
