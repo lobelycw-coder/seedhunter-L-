@@ -49,7 +49,7 @@ class Settings:
     family: str = "repeat"
     word_pool: int = 128
     shard: int = 0
-    shards: int = 4
+    shards: int = 5
     per_seed: int = 10
     workers: int = 48
     farm_processes: int = 4
@@ -93,10 +93,10 @@ def load(path=ROOT / "config.yaml") -> Settings:
     if not chains:
         raise SystemExit("no chains enabled")
     sw = raw.get("sweep") or {}
-    return Settings(
+    settings = Settings(
         mode=raw.get("mode", "vulture"), family=raw.get("family", "repeat"),
         word_pool=int(raw.get("word_pool", 128)), shard=int(raw.get("shard", 0)),
-        shards=int(raw.get("shards", 4)), per_seed=int(raw.get("per_seed", 10)),
+        shards=int(raw.get("shards", 5)), per_seed=int(raw.get("per_seed", 10)),
         workers=int(raw.get("workers", 48)),
         farm_processes=int(raw.get("farm_processes", 4)),
         batch_size=int(raw.get("batch_size", 60)),
@@ -127,3 +127,6 @@ def load(path=ROOT / "config.yaml") -> Settings:
         tg_token=os.getenv("TELEGRAM_BOT_TOKEN") or None,
         tg_chat=os.getenv("TELEGRAM_CHAT_ID") or None,
     )
+    from . import overrides
+    overrides.apply(settings)
+    return settings
