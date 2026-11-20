@@ -5,7 +5,8 @@ on:
   workflow_dispatch:
     inputs:
       family:
-        default: "repeat"
+        description: "blank = use config.yaml"
+        default: ""
       duration:
         default: "20400"
 concurrency:
@@ -29,8 +30,8 @@ jobs:
       - uses: actions/cache/restore@v4
         with:
           path: data
-          key: cur-${{ github.event.inputs.family || 'repeat' }}-${{ matrix.shard }}-${{ github.run_id }}
-          restore-keys: cur-${{ github.event.inputs.family || 'repeat' }}-${{ matrix.shard }}-
+          key: cur-${{ github.event.inputs.family || 'auto' }}-${{ matrix.shard }}-${{ github.run_id }}
+          restore-keys: cur-${{ github.event.inputs.family || 'auto' }}-${{ matrix.shard }}-
       - env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -42,15 +43,16 @@ jobs:
           RPC_OPTIMISM: ${{ secrets.RPC_OPTIMISM }}
           RPC_AVAX: ${{ secrets.RPC_AVAX }}
           RPC_SOLANA: ${{ secrets.RPC_SOLANA }}
+          FAMILY: ${{ github.event.inputs.family }}
         run: |
-          python -m seedhunter.cli hunt -s ${{ matrix.shard }} \
-            -f ${{ github.event.inputs.family || 'repeat' }} \
-            -d ${{ github.event.inputs.duration || 20400 }}
+          ARGS="-s ${{ matrix.shard }} -d ${{ github.event.inputs.duration || 20400 }}"
+          if [ -n "$FAMILY" ]; then ARGS="$ARGS -f $FAMILY"; fi
+          python -m seedhunter.cli hunt $ARGS
       - uses: actions/cache/save@v4
         if: always()
         with:
           path: data
-          key: cur-${{ github.event.inputs.family || 'repeat' }}-${{ matrix.shard }}-${{ github.run_id }}
+          key: cur-${{ github.event.inputs.family || 'auto' }}-${{ matrix.shard }}-${{ github.run_id }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
