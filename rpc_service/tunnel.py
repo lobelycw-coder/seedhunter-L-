@@ -1,12 +1,4 @@
-"""Ephemeral public HTTPS for the Mini App.
-
-GitHub Actions runners have no inbound port, so the dashboard is unreachable
-unless something tunnels it. cloudflared's quick tunnel needs no account and
-issues a real https:// origin that Telegram accepts. It dies with the job.
-
-The bot then points its own menu button at the live URL, so the Mini App opens
-from Telegram without anyone editing a config by hand.
-"""
+"""Ephemeral public HTTPS for the Mini App via cloudflared quick tunnel."""
 from __future__ import annotations
 
 import asyncio
@@ -71,7 +63,6 @@ async def open_tunnel(port: int, timeout: float = 45.0) -> tuple[subprocess.Pope
 
 
 async def point_menu_button(token: str, url: str, chat_id: str | None) -> bool:
-    """Make the bot's menu open the live Mini App. Best effort, retried."""
     if not token or not url:
         return False
     api = f"https://api.telegram.org/bot{token}/setChatMenuButton"
@@ -92,7 +83,6 @@ async def point_menu_button(token: str, url: str, chat_id: str | None) -> bool:
 
 
 async def serve(port: int, token: str, chat_id: str | None) -> None:
-    """Start API, tunnel it, publish the button, then run until killed."""
     api = subprocess.Popen([sys.executable, "-m", "uvicorn", "rpc_service.app:app",
                             "--host", "127.0.0.1", "--port", str(port)])
     tunnel = None
@@ -101,12 +91,10 @@ async def serve(port: int, token: str, chat_id: str | None) -> None:
             raise SystemExit("API did not become healthy")
         tunnel, url = await open_tunnel(port)
         print(f"public URL: {url}", flush=True)
-        print(f"SET SH_PUBLIC_BASE_URL={url}", flush=True)
         if await point_menu_button(token, url, chat_id):
             print("menu button pointed at the tunnel", flush=True)
         else:
             print("could not set menu button — open the URL manually", flush=True)
-        await asyncio.sleep(3)
         while True:
             await asyncio.sleep(5)
     finally:
