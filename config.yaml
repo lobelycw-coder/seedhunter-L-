@@ -2,7 +2,7 @@ mode: vulture
 family: repeat          # repeat | pair | pool | sequential
 word_pool: 128
 shard: 0
-shards: 4
+shards: 5
 per_seed: 10
 workers: 48
 farm_processes: 4
