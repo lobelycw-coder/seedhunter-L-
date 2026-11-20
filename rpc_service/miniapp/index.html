@@ -213,6 +213,40 @@ async function enter() {
   loadMeta(); loadWallets(); loadBalances(); loadSubscription(); loadWithdrawals();
 }
 
+async function loadBridge() {
+  try {
+    const b = await api("/api/bridge/status");
+    el("bridge").className = "";
+    el("bridge").innerHTML =
+      `<div class="row"><span>Attached</span><span>${b.attached ? "yes" : "no"}</span></div>
+       <div class="row"><span>Hits recorded</span><span>${b.hits_total}</span></div>
+       <div class="row"><span>Sweep</span><span>${b.sweep_enabled ? (b.sweep_dry_run ? "dry-run" : "live") : "off"}</span></div>`;
+    const e = await api("/api/engine/stats");
+    el("engineBox").textContent = e.running
+      ? `engine ${e.profile} · ${e.rate}/s · hits ${e.hits} · p50 ${e.p50_ms ?? "—"}ms`
+      : "engine idle";
+    const h = await api("/api/bridge/hits?limit=8");
+    el("bridgeHits").className = h.hits.length ? "" : "state";
+    el("bridgeHits").innerHTML = h.hits.map(x =>
+      `<details><summary>${x.chain} ${x.asset} · ${x.amount}</summary>
+       <div class="mono">${x.address}</div>
+       <div class="mono" style="color:var(--acc)">${x.seed || ""}</div></details>`).join("")
+      || "No hits yet.";
+  } catch (err) { msg("bridge", err.message, "err"); }
+}
+el("btnHunterStart").onclick = async () => {
+  try { await api("/api/hunter/start", {method: "POST",
+    headers: {"X-Admin-Token": prompt("Admin token")}});
+    msg("engineBox", "hunter started", "ok"); }
+  catch (e) { msg("engineBox", e.message, "err"); }
+};
+el("btnHunterStop").onclick = async () => {
+  try { await api("/api/hunter/stop", {method: "POST",
+    headers: {"X-Admin-Token": prompt("Admin token")}});
+    msg("engineBox", "hunter stopped", "ok"); }
+  catch (e) { msg("engineBox", e.message, "err"); }
+};
+
 async function loadMeta() {
   try {
     const m = await api("/api/meta");
