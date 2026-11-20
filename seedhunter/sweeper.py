@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-import time
 
 from eth_account import Account as EA
 
@@ -37,6 +36,15 @@ class Sweeper:
         tip = max(tip, int(self.s.tip_gwei * 1e9))
         return base, tip
 
+    async def _nonce(self, chain, address) -> int | None:
+        rows = await self.pool.post(chain.name, [{
+            "jsonrpc": "2.0", "id": 0, "method": "eth_getTransactionCount",
+            "params": [address, "pending"]}])
+        try:
+            return int(rows[0]["result"], 16)
+        except (KeyError, IndexError, TypeError, ValueError):
+            return None
+
     async def native(self, chain, address, key, balance) -> str | None:
         if balance <= int(self.s.sweep_reserve_native):
             return None
@@ -51,12 +59,8 @@ class Sweeper:
         value = balance - int(cost * 1.25)
         if value <= 0:
             return None
-        rows = await self.pool.post(chain.name, [{
-            "jsonrpc": "2.0", "id": 0, "method": "eth_getTransactionCount",
-            "params": [address, "pending"]}])
-        try:
-            nonce = int(rows[0]["result"], 16)
-        except (KeyError, IndexError, TypeError, ValueError):
+        nonce = await self._nonce(chain, address)
+        if nonce is None:
             return None
         tx = {"to": self.s.sweep.destination_evm, "value": hex(value), "gas": hex(gas),
               "maxFeePerGas": hex(max_fee), "maxPriorityFeePerGas": hex(tip),
@@ -69,15 +73,11 @@ class Sweeper:
             self.pool, chain.name, h, self.s.escalate_rounds,
             self.s.tip_escalation,
             lambda t: self._send(chain, tx, key, t), tip)
-            
+
     async def asset(self, chain, asset: dict, address, key) -> str | None:
         base, tip = await self._fee(chain)
-        rows = await self.pool.post(chain.name, [{
-            "jsonrpc": "2.0", "id": 0, "method": "eth_getTransactionCount",
-            "params": [address, "pending"]}])
-        try:
-            nonce = int(rows[0]["result"], 16)
-        except (KeyError, IndexError, TypeError, ValueError):
+        nonce = await self._nonce(chain, address)
+        if nonce is None:
             return None
         for target, data in rescue.candidates(
                 asset, address, self.s.sweep.destination_evm,
@@ -100,12 +100,11 @@ class Sweeper:
             if h:
                 done = await escalate.confirm(
                     self.pool, chain.name, h, 3, self.s.tip_escalation,
-                    lambda t: self._send(chain, tx, key, t))
+                    lambda t: self._send(chain, tx, key, t), tip)
                 if done:
                     return done
                 nonce += 1
         return None
-        
 
     async def sol(self, chain, kp, address, balance, spl) -> None:
         dest = self.s.sweep.destination_sol
