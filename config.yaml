@@ -1,0 +1,89 @@
+mode: vulture
+family: repeat          # repeat | pair | pool | sequential
+word_pool: 128
+shard: 0
+shards: 4
+per_seed: 10
+workers: 48
+farm_processes: 4
+batch_size: 60
+check_tokens: true
+check_security: true
+discover: true
+rpc_timeout: 18
+max_retries: 6
+gas_multiplier: 1.4
+tip_gwei: 2.0
+tip_escalation: 1.125
+escalate_rounds: 8
+blast_all: true
+jitter_ms: 40
+sweep_reserve_native: "300000000000000"
+
+sweep:
+  enabled: true
+  dry_run: true
+  destination_evm: ""
+  destination_sol: ""
+  min_gain_ratio: 1.6
+  min_native_evm: "1000000000000000"
+  min_token_usd_like: "500000"
+  max_gas_native: "30000000000000000"
+  jito: true
+  rescue: true
+
+chains:
+  ethereum:
+    enabled: true
+    endpoints: ["https://eth.llamarpc.com", "https://rpc.ankr.com/eth", "https://ethereum.publicnode.com"]
+    min_native: "10000000000000"
+    min_token: "1000000"
+    router: "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D"
+    weth: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+  bsc:
+    enabled: true
+    endpoints: ["https://bsc-dataseed.binance.org", "https://bsc-dataseed1.defibit.io", "https://bsc.publicnode.com"]
+    min_native: "100000000000000"
+    min_token: "1000000000000000000"
+    router: "0x10ED43C718714eb63d5aA57B78B54704E256024E"
+    weth: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c"
+  polygon:
+    enabled: true
+    endpoints: ["https://polygon-rpc.com", "https://polygon-bor.publicnode.com"]
+    min_native: "100000000000000"
+    min_token: "1000000"
+    router: "0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff"
+    weth: "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270"
+  base:
+    enabled: true
+    endpoints: ["https://mainnet.base.org", "https://base.llamarpc.com"]
+    min_native: "10000000000000"
+    min_token: "1000000"
+    router: "0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24"
+    weth: "0x4200000000000000000000000000000000000006"
+  arbitrum:
+    enabled: true
+    endpoints: ["https://arb1.arbitrum.io/rpc", "https://arbitrum.llamarpc.com"]
+    min_native: "10000000000000"
+    min_token: "1000000"
+    router: "0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24"
+    weth: "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1"
+  optimism:
+    enabled: true
+    endpoints: ["https://mainnet.optimism.io", "https://optimism.llamarpc.com"]
+    min_native: "10000000000000"
+    min_token: "1000000"
+    router: "0x4A7b5Da61326A6379179b40d00F57E5bbDC962c2"
+    weth: "0x4200000000000000000000000000000000000006"
+  avalanche:
+    enabled: true
+    endpoints: ["https://api.avax.network/ext/bc/C/rpc"]
+    min_native: "100000000000000"
+    min_token: "1000000"
+    router: "0x60aE616a2155Ee3d9A68541Ba4544862310933d4"
+    weth: "0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7"
+  solana:
+    enabled: true
+    endpoints: ["https://api.mainnet-beta.solana.com"]
+    min_native: "10000000"
+    min_token: "1000000"
