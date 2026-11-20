@@ -1,0 +1,10 @@
+httpx[http2]>=0.27
+mnemonic>=0.21
+eth-account>=0.11
+eth-utils>=4.0
+coincurve>=19.0
+pyyaml>=6.0
+python-telegram-bot>=21.0
+python-dotenv>=1.0
+solders>=0.21
+base58>=2.1
