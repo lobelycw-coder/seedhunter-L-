@@ -1,0 +1,143 @@
+name: brutal
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "risk profile"
+        type: choice
+        options: [safe, aggressive, brutal, insane]
+        default: brutal
+      duration:
+        description: "seconds (max 19800)"
+        default: "19800"
+      shard:
+        default: "0"
+      shards:
+        default: "5"
+      mirror_hits:
+        description: "also write into data/hits.db"
+        type: choice
+        options: ["true", "false"]
+        default: "true"
+      run_bots:
+        description: "start command bot + mini app"
+        type: choice
+        options: ["true", "false"]
+        default: "true"
+concurrency:
+  group: brutal-${{ github.event.inputs.shard }}
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  doctor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt -r rpc_service/requirements.txt
+      - env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          SH_TG_DASH_BOT_TOKEN: ${{ secrets.SH_TG_DASH_BOT_TOKEN }}
+          SH_ADMIN_TOKEN: ${{ secrets.SH_ADMIN_TOKEN }}
+          SH_DEPOSIT_BTC: ${{ secrets.SH_DEPOSIT_BTC }}
+          SH_DEPOSIT_ETH: ${{ secrets.SH_DEPOSIT_ETH }}
+          SH_DEPOSIT_SOL: ${{ secrets.SH_DEPOSIT_SOL }}
+          SH_DEPOSIT_BNB: ${{ secrets.SH_DEPOSIT_BNB }}
+          SH_KMS_KEY_EVM: ${{ secrets.SH_KMS_KEY_EVM }}
+          SH_KMS_KEY_SOL: ${{ secrets.SH_KMS_KEY_SOL }}
+          RPC_ETH: ${{ secrets.RPC_ETH }}
+          RPC_BSC: ${{ secrets.RPC_BSC }}
+          RPC_SOLANA: ${{ secrets.RPC_SOLANA }}
+        run: python -m rpc_service.console doctor
+
+  engine:
+    needs: doctor
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt -r rpc_service/requirements.txt
+      - uses: actions/cache/restore@v4
+        with:
+          path: data
+          key: brutal-${{ github.event.inputs.shard }}-${{ github.run_id }}
+          restore-keys: brutal-${{ github.event.inputs.shard }}-
+      - uses: actions/cache/restore@v4
+        with:
+          path: rpc_service/data
+          key: brutal-own-${{ github.event.inputs.shard }}-${{ github.run_id }}
+          restore-keys: brutal-own-${{ github.event.inputs.shard }}-
+      - env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RPC_ETH: ${{ secrets.RPC_ETH }}
+          RPC_BSC: ${{ secrets.RPC_BSC }}
+          RPC_POLYGON: ${{ secrets.RPC_POLYGON }}
+          RPC_BASE: ${{ secrets.RPC_BASE }}
+          RPC_ARBITRUM: ${{ secrets.RPC_ARBITRUM }}
+          RPC_OPTIMISM: ${{ secrets.RPC_OPTIMISM }}
+          RPC_AVAX: ${{ secrets.RPC_AVAX }}
+          RPC_SOLANA: ${{ secrets.RPC_SOLANA }}
+        run: |
+          ARGS="-p ${{ github.event.inputs.profile }} -s ${{ github.event.inputs.shard }} --shards ${{ github.event.inputs.shards }} -d ${{ github.event.inputs.duration }} --notify"
+          if [ "${{ github.event.inputs.mirror_hits }}" = "true" ]; then ARGS="$ARGS --mirror-hits"; fi
+          timeout 21000 python -m rpc_service.console engine $ARGS || true
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: data
+          key: brutal-${{ github.event.inputs.shard }}-${{ github.run_id }}
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: rpc_service/data
+          key: brutal-own-${{ github.event.inputs.shard }}-${{ github.run_id }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: brutal-${{ github.event.inputs.shard }}
+          path: |
+            data
+            rpc_service/data
+
+  dash:
+    needs: doctor
+    if: ${{ github.event.inputs.run_bots == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt -r rpc_service/requirements.txt
+      - uses: actions/cache/restore@v4
+        with:
+          path: data
+          key: brutal-${{ github.event.inputs.shard }}-${{ github.run_id }}
+          restore-keys: brutal-${{ github.event.inputs.shard }}-
+      - env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SH_TG_DASH_BOT_TOKEN: ${{ secrets.SH_TG_DASH_BOT_TOKEN }}
+          SH_ADMIN_TOKEN: ${{ secrets.SH_ADMIN_TOKEN }}
+          SH_ATTACH: "1"
+          SH_MONITOR_ENABLED: "1"
+          RPC_ETH: ${{ secrets.RPC_ETH }}
+          RPC_BSC: ${{ secrets.RPC_BSC }}
+          RPC_SOLANA: ${{ secrets.RPC_SOLANA }}
+        run: |
+          python -m rpc_service.console mini &
+          sleep 25
+          python -m rpc_service.console command &
+          wait
