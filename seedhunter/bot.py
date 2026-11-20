@@ -86,6 +86,44 @@ def build(s: Settings) -> Application:
             await u.message.reply_text(f"family → {s.family} (restart to apply)")
         else:
             await u.message.reply_text("usage: /family repeat|pair|pool|sequential")
+            
+        async def setv(u: Update, c: ContextTypes.DEFAULT_TYPE):
+        if not ok(u):
+            return
+        if len(c.args) < 2:
+            await u.message.reply_text("usage: /set <key> <value>")
+            return
+        from . import overrides
+        await u.message.reply_text(overrides.save(c.args[0], c.args[1]))
+
+    async def show(u: Update, _c: ContextTypes.DEFAULT_TYPE):
+        if not ok(u):
+            return
+        await u.message.reply_text(
+            f"family {s.family} shard {s.shard}/{s.shards}\n"
+            f"dry_run {s.sweep.dry_run} sweep {s.sweep.enabled}\n"
+            f"dest_evm {s.sweep.destination_evm or '—'}\n"
+            f"dest_sol {s.sweep.destination_sol or '—'}")
+
+    async def pull(u: Update, _c: ContextTypes.DEFAULT_TYPE):
+        if not ok(u):
+            return
+        import subprocess
+        if state["h"]:
+            state["h"].stop()
+        r = subprocess.run(["git", "pull", "--ff-only"], capture_output=True,
+                           text=True, cwd=str(config.ROOT))
+        await u.message.reply_text(
+            (r.stdout + r.stderr).strip()[-800:] or "nothing to pull")
+        import sys
+        sys.exit(0)
+
+    async def restart(u: Update, _c: ContextTypes.DEFAULT_TYPE):
+        if not ok(u):
+            return
+        await u.message.reply_text("restarting")
+        import sys
+        sys.exit(0)
 
     app = Application.builder().token(s.tg_token).build()
     for name, fn in [("start", start), ("stop", stop), ("stats", stats),
