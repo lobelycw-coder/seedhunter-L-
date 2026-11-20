@@ -56,7 +56,8 @@ jobs:
         with:
           name: out-${{ matrix.shard }}
           path: data
-bot:
+
+  bot:
     runs-on: ubuntu-latest
     timeout-minutes: 355
     steps:
@@ -69,11 +70,22 @@ bot:
       - uses: actions/cache/restore@v4
         with:
           path: data
-          key: cur-repeat-0-latest
-          restore-keys: cur-repeat-0-
+          key: bot-state-${{ github.run_id }}
+          restore-keys: bot-state-
       - env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           RPC_ETH: ${{ secrets.RPC_ETH }}
+          RPC_BSC: ${{ secrets.RPC_BSC }}
+          RPC_POLYGON: ${{ secrets.RPC_POLYGON }}
           RPC_BASE: ${{ secrets.RPC_BASE }}
-        run: timeout 20000 python -m seedhunter.cli bot || true
+          RPC_ARBITRUM: ${{ secrets.RPC_ARBITRUM }}
+          RPC_OPTIMISM: ${{ secrets.RPC_OPTIMISM }}
+          RPC_AVAX: ${{ secrets.RPC_AVAX }}
+          RPC_SOLANA: ${{ secrets.RPC_SOLANA }}
+        run: timeout 20000 python -m seedhunter.cli bot -s 4 || true
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: data
+          key: bot-state-${{ github.run_id }}
