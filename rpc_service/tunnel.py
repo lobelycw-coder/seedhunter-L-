@@ -19,7 +19,7 @@ import time
 
 import httpx
 
-URL_RE = re.compile(r"https://[a-z0-9][a-z0-9-]*\.trycloudflare\.com")
+URL_RE = re.compile(r"https://[a-z0-9][a-z0-9-]*\.trycloudflare\.com(?=[\s|'\"]|$)")
 BIN = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"
 
 
