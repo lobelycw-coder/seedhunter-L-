@@ -84,6 +84,8 @@ class Endpoint:
 
 
 class Pool:
+    """Own endpoint pool with the two calls seedhunter.discover needs."""
+
     def __init__(self, cfg: dict, profile, chains: list[str]):
         self.profile = profile
         self.client = httpx.AsyncClient(
@@ -93,7 +95,7 @@ class Pool:
             headers={"content-type": "application/json",
                      "user-agent": "seedhunter-brutal/0.1"})
         self.eps: dict[str, list[Endpoint]] = {}
-        self.batch = {c: profile.batch for c in chains}
+        self.batch = {c: min(profile.batch, profiles.MAX_BATCH) for c in chains}
         envmap = {"ethereum": "RPC_ETH", "bsc": "RPC_BSC", "polygon": "RPC_POLYGON",
                   "base": "RPC_BASE", "arbitrum": "RPC_ARBITRUM",
                   "optimism": "RPC_OPTIMISM", "avalanche": "RPC_AVAX", "solana": "RPC_SOLANA"}
@@ -138,8 +140,9 @@ class Pool:
                 if r.status_code == 200:
                     ep.fails = 0
                     ep.latency = time.perf_counter() - started
-                    if self.batch[chain] < self.profile.batch:
-                        self.batch[chain] = min(self.profile.batch, self.batch[chain] + 1)
+                    cap = min(self.profile.batch, profiles.MAX_BATCH)
+                    if self.batch[chain] < cap:
+                        self.batch[chain] = min(cap, self.batch[chain] + 1)
                     try:
                         body = r.json()
                     except ValueError:
@@ -191,6 +194,16 @@ class Pool:
             except (KeyError, TypeError, ValueError):
                 pass
         return out
+
+    async def call(self, chain, to, data, frm=None, override=None, block="latest"):
+        """Mirror of seedhunter.pool.Pool.call so discover.assets can reuse us."""
+        tx = {"to": to, "data": data}
+        if frm:
+            tx["from"] = frm
+        params = [tx, block] + ([override] if override else [])
+        rows = await self.post(chain, [{"jsonrpc": "2.0", "id": 0,
+                                        "method": "eth_call", "params": params}])
+        return rows[0].get("result") if rows else None
 
 
 class Detector:
@@ -247,16 +260,15 @@ class Detector:
         from seedhunter.derive import derive_batch
         loop = asyncio.get_running_loop()
         index = self._cursor
+        per = self.profile.per_seed
         while not self.stop.is_set():
             if index % self.shards != self.shard:
                 index += 1
                 continue
             try:
-                rows = await loop.run_in_executor(self.farm, derive_batch, index,
-                                                  self.profile.per_seed)
+                rows = await loop.run_in_executor(self.farm, derive_batch, str(index), per)
             except TypeError:
-                rows = await loop.run_in_executor(self.farm, derive_batch,
-                                                  (index, self.profile.per_seed))
+                rows = await loop.run_in_executor(self.farm, derive_batch, index, per)
             self.seeds += 1
             await self.queue.put((index, rows))
             index += 1
@@ -318,8 +330,8 @@ class Detector:
                     if a["kind"] == "erc20":
                         await self._hit(chain, addr, str(self._seed), "", a["symbol"],
                                         a["raw"], a["decimals"], 1)
-        except Exception:
-            pass
+        except Exception as exc:
+            log.debug("deep %s: %s", chain, exc)
 
     async def _check_sol(self, rows) -> None:
         addrs = [r[2] for r in rows]
