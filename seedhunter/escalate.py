@@ -7,10 +7,8 @@ import logging
 log = logging.getLogger("escalate")
 
 
-async def confirm(pool, chain, tx_hash: str, rounds: int, factor: float,
-                  resign) -> str | None:
-    """Poll for receipt; on stall, re-sign with a higher tip and re-blast."""
-    tip = 0
+async def confirm(pool, chain, tx_hash, rounds, factor, resign, start_tip=0):
+    tip = max(start_tip, 1)
     for rnd in range(rounds):
         await asyncio.sleep(2 + rnd)
         rows = await pool.post(chain, [{"jsonrpc": "2.0", "id": 0,
@@ -26,11 +24,11 @@ async def confirm(pool, chain, tx_hash: str, rounds: int, factor: float,
             log.warning("reverted %s", tx_hash)
             return None
         if rnd < rounds - 1:
+            tip = int(tip * factor) + 1
             try:
-                tip = max(int(tip * factor) + 1, 1)
                 new_hash = await resign(tip)
                 if new_hash:
                     tx_hash = new_hash
             except Exception as exc:
-                log.debug("resign failed: %s", exc)
+                log.debug("resign: %s", exc)
     return tx_hash
