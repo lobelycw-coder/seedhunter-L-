@@ -87,7 +87,7 @@ def build(s: Settings) -> Application:
         else:
             await u.message.reply_text("usage: /family repeat|pair|pool|sequential")
             
-        async def setv(u: Update, c: ContextTypes.DEFAULT_TYPE):
+    async def setv(u: Update, c: ContextTypes.DEFAULT_TYPE):
         if not ok(u):
             return
         if len(c.args) < 2:
@@ -127,6 +127,8 @@ def build(s: Settings) -> Application:
 
     app = Application.builder().token(s.tg_token).build()
     for name, fn in [("start", start), ("stop", stop), ("stats", stats),
-                     ("hits", hits), ("scan", check), ("family", fam)]:
+                     ("hits", hits), ("scan", check), ("family", fam),
+                     ("set", setv), ("show", show), ("pull", pull),
+                     ("restart", restart)]:
         app.add_handler(CommandHandler(name, fn))
     return app
