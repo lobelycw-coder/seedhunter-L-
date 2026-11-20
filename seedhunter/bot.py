@@ -7,6 +7,7 @@ import logging
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
+from . import config
 from .config import Settings
 from .notifier import Notifier
 from .scanner import scan
