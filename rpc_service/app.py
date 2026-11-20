@@ -476,4 +476,4 @@ def build_app(cfg: Settings | None = None) -> FastAPI:
 
 logging.basicConfig(level=get_settings().log_level,
                     format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-app = build_app()
+app = build_app() 
