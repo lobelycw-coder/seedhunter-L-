@@ -1,5 +1,7 @@
 name: brutal
 on:
+  schedule:
+    - cron: "15 */6 * * *"
   workflow_dispatch:
     inputs:
       profile:
@@ -15,17 +17,15 @@ on:
       shards:
         default: "5"
       mirror_hits:
-        description: "also write into data/hits.db"
         type: choice
         options: ["true", "false"]
         default: "true"
       run_bots:
-        description: "start command bot + mini app"
         type: choice
         options: ["true", "false"]
         default: "true"
 concurrency:
-  group: brutal-${{ github.event.inputs.shard }}
+  group: brutal
   cancel-in-progress: false
 permissions:
   contents: read
@@ -59,6 +59,10 @@ jobs:
     needs: doctor
     runs-on: ubuntu-latest
     timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -69,13 +73,13 @@ jobs:
       - uses: actions/cache/restore@v4
         with:
           path: data
-          key: brutal-${{ github.event.inputs.shard }}-${{ github.run_id }}
-          restore-keys: brutal-${{ github.event.inputs.shard }}-
+          key: brutal-${{ matrix.shard }}-${{ github.run_id }}
+          restore-keys: brutal-${{ matrix.shard }}-
       - uses: actions/cache/restore@v4
         with:
           path: rpc_service/data
-          key: brutal-own-${{ github.event.inputs.shard }}-${{ github.run_id }}
-          restore-keys: brutal-own-${{ github.event.inputs.shard }}-
+          key: brutal-own-${{ matrix.shard }}-${{ github.run_id }}
+          restore-keys: brutal-own-${{ matrix.shard }}-
       - env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -88,30 +92,30 @@ jobs:
           RPC_AVAX: ${{ secrets.RPC_AVAX }}
           RPC_SOLANA: ${{ secrets.RPC_SOLANA }}
         run: |
-          ARGS="-p ${{ github.event.inputs.profile }} -s ${{ github.event.inputs.shard }} --shards ${{ github.event.inputs.shards }} -d ${{ github.event.inputs.duration }} --notify"
-          if [ "${{ github.event.inputs.mirror_hits }}" = "true" ]; then ARGS="$ARGS --mirror-hits"; fi
+          ARGS="-p ${{ github.event.inputs.profile || 'brutal' }} -s ${{ matrix.shard }} --shards ${{ github.event.inputs.shards || 5 }} -d ${{ github.event.inputs.duration || 19800 }} --notify"
+          if [ "${{ github.event.inputs.mirror_hits || 'true' }}" = "true" ]; then ARGS="$ARGS --mirror-hits"; fi
           timeout 21000 python -m rpc_service.console engine $ARGS || true
       - uses: actions/cache/save@v4
         if: always()
         with:
           path: data
-          key: brutal-${{ github.event.inputs.shard }}-${{ github.run_id }}
+          key: brutal-${{ matrix.shard }}-${{ github.run_id }}
       - uses: actions/cache/save@v4
         if: always()
         with:
           path: rpc_service/data
-          key: brutal-own-${{ github.event.inputs.shard }}-${{ github.run_id }}
+          key: brutal-own-${{ matrix.shard }}-${{ github.run_id }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: brutal-${{ github.event.inputs.shard }}
+          name: brutal-${{ matrix.shard }}
           path: |
             data
             rpc_service/data
 
   dash:
     needs: doctor
-    if: ${{ github.event.inputs.run_bots == 'true' }}
+    if: ${{ github.event.inputs.run_bots != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 350
     steps:
@@ -124,8 +128,8 @@ jobs:
       - uses: actions/cache/restore@v4
         with:
           path: data
-          key: brutal-${{ github.event.inputs.shard }}-${{ github.run_id }}
-          restore-keys: brutal-${{ github.event.inputs.shard }}-
+          key: brutal-0-${{ github.run_id }}
+          restore-keys: brutal-0-
       - env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
