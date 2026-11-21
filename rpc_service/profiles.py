@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 
+MAX_BATCH = 400
+
 
 @dataclass(frozen=True)
 class Profile:
@@ -18,23 +20,26 @@ class Profile:
     jitter_ms: int
     deep_funded: bool
     per_seed: int
+    sweep: bool
+    prefetch: int
     note: str
 
 
 PRESETS = {
-    "safe": Profile("safe", ("ethereum", "bsc", "solana"), True, 1, 8, 2, 25, 18.0, 4, 40,
-                    False, 10, "low load, repo thresholds, native only"),
+    "safe": Profile("safe", ("ethereum", "bsc", "solana"), True, 1, 12, 2, 25, 18.0,
+                    4, 40, False, 10, False, 8,
+                    "low load, repo thresholds, native only"),
     "aggressive": Profile("aggressive", ("ethereum", "bsc", "polygon", "base", "solana"),
-                          False, 2, 32, 4, 60, 14.0, 4, 25, False, 10,
+                          False, 2, 48, 4, 80, 14.0, 4, 25, False, 10, True, 16,
                           "5 chains, tokens on funded, half thresholds"),
     "brutal": Profile("brutal", ("ethereum", "bsc", "polygon", "base", "arbitrum",
                                  "optimism", "avalanche", "solana"),
-                      False, 4, 96, 8, 120, 10.0, 3, 10, True, 12,
-                      "all 8 chains, deep funded scan, quarter thresholds"),
+                      False, 4, 160, 8, 200, 10.0, 3, 10, True, 12, True, 32,
+                      "all 8 chains, deep funded scan, quarter thresholds, sweeps"),
     "insane": Profile("insane", ("ethereum", "bsc", "polygon", "base", "arbitrum",
                                  "optimism", "avalanche", "solana"),
-                      False, 10, 256, 16, 250, 8.0, 2, 0, True, 16,
-                      "max throughput, tenth thresholds, expects 429s"),
+                      False, 10, 320, 16, 400, 8.0, 2, 0, True, 16, True, 64,
+                      "max throughput, tenth thresholds, expects 429s, sweeps"),
 }
 
 
