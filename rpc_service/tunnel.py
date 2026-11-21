@@ -1,4 +1,4 @@
-"""Ephemeral public HTTPS for the Mini App via cloudflared quick tunnel."""
+"""Ephemeral public HTTPS for the Mini App, plus dashboard bot supervision."""
 from __future__ import annotations
 
 import asyncio
@@ -8,16 +8,33 @@ import shutil
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 import httpx
 
 URL_RE = re.compile(r"https://[a-z0-9][a-z0-9-]*\.trycloudflare\.com(?=[\s|'\"]|$)")
 BIN = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"
+DATA = Path(__file__).resolve().parent / "data"
+URL_FILE = DATA / "webapp_url.txt"
 
 
 def extract_url(line: str) -> str | None:
     match = URL_RE.search(line)
     return match.group(0) if match else None
+
+
+def publish_url(url: str) -> None:
+    DATA.mkdir(parents=True, exist_ok=True)
+    tmp = URL_FILE.with_suffix(".tmp")
+    tmp.write_text(url)
+    tmp.replace(URL_FILE)
+
+
+def current_url() -> str:
+    try:
+        return URL_FILE.read_text().strip()
+    except OSError:
+        return ""
 
 
 async def wait_local(port: int, timeout: float = 90.0) -> bool:
@@ -82,22 +99,40 @@ async def point_menu_button(token: str, url: str, chat_id: str | None) -> bool:
     return False
 
 
+def spawn_bot(url: str) -> subprocess.Popen | None:
+    """Start the dashboard bot with the live tunnel URL in its environment."""
+    if not os.getenv("SH_TG_DASH_BOT_TOKEN"):
+        print("SH_TG_DASH_BOT_TOKEN unset — dashboard bot not started", flush=True)
+        return None
+    env = dict(os.environ)
+    env["SH_TG_WEBAPP_URL"] = url
+    proc = subprocess.Popen([sys.executable, "-m", "rpc_service.dashboard_bot"],
+                            cwd=str(Path(__file__).resolve().parent.parent), env=env)
+    print(f"dashboard bot started pid={proc.pid}", flush=True)
+    return proc
+
+
 async def serve(port: int, token: str, chat_id: str | None) -> None:
     api = subprocess.Popen([sys.executable, "-m", "uvicorn", "rpc_service.app:app",
                             "--host", "127.0.0.1", "--port", str(port)])
-    tunnel = None
+    tunnel = bot = None
     try:
         if not await wait_local(port):
             raise SystemExit("API did not become healthy")
         tunnel, url = await open_tunnel(port)
+        publish_url(url)
         print(f"public URL: {url}", flush=True)
         if await point_menu_button(token, url, chat_id):
             print("menu button pointed at the tunnel", flush=True)
         else:
             print("could not set menu button — open the URL manually", flush=True)
+        bot = spawn_bot(url)
         while True:
             await asyncio.sleep(5)
+            if bot is not None and bot.poll() is not None:
+                print(f"dashboard bot exited ({bot.returncode}), restarting", flush=True)
+                bot = spawn_bot(url)
     finally:
-        for proc in (tunnel, api):
+        for proc in (bot, tunnel, api):
             if proc and proc.poll() is None:
                 proc.terminate()
