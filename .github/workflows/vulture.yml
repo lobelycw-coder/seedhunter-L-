@@ -1,11 +1,9 @@
 name: vulture
 on:
-  schedule:
-    - cron: "0 */6 * * *"
   workflow_dispatch:
     inputs:
       family:
-        description: "blank = use config.yaml"
+        description: "blank = config.yaml"
         default: ""
       duration:
         default: "20400"
@@ -19,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3]
+        shard: [0, 1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -58,36 +56,3 @@ jobs:
         with:
           name: out-${{ matrix.shard }}
           path: data
-
-  bot:
-    runs-on: ubuntu-latest
-    timeout-minutes: 355
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-      - run: pip install -r requirements.txt
-      - uses: actions/cache/restore@v4
-        with:
-          path: data
-          key: bot-state-${{ github.run_id }}
-          restore-keys: bot-state-
-      - env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          RPC_ETH: ${{ secrets.RPC_ETH }}
-          RPC_BSC: ${{ secrets.RPC_BSC }}
-          RPC_POLYGON: ${{ secrets.RPC_POLYGON }}
-          RPC_BASE: ${{ secrets.RPC_BASE }}
-          RPC_ARBITRUM: ${{ secrets.RPC_ARBITRUM }}
-          RPC_OPTIMISM: ${{ secrets.RPC_OPTIMISM }}
-          RPC_AVAX: ${{ secrets.RPC_AVAX }}
-          RPC_SOLANA: ${{ secrets.RPC_SOLANA }}
-        run: timeout 20000 python -m seedhunter.cli bot -s 4 || true
-      - uses: actions/cache/save@v4
-        if: always()
-        with:
-          path: data
-          key: bot-state-${{ github.run_id }}
