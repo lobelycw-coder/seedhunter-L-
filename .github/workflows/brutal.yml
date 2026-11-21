@@ -130,18 +130,22 @@ jobs:
           path: data
           key: brutal-0-${{ github.run_id }}
           restore-keys: brutal-0-
+      - uses: actions/cache/restore@v4
+        with:
+          path: rpc_service/data
+          key: brutal-own-0-${{ github.run_id }}
+          restore-keys: brutal-own-0-
       - env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           SH_TG_DASH_BOT_TOKEN: ${{ secrets.SH_TG_DASH_BOT_TOKEN }}
           SH_ADMIN_TOKEN: ${{ secrets.SH_ADMIN_TOKEN }}
-          SH_ATTACH: "1"
-          SH_MONITOR_ENABLED: "1"
+          SH_MONITOR_ENABLED: "0"
           RPC_ETH: ${{ secrets.RPC_ETH }}
           RPC_BSC: ${{ secrets.RPC_BSC }}
           RPC_SOLANA: ${{ secrets.RPC_SOLANA }}
         run: |
           python -m rpc_service.console mini &
-          sleep 25
+          sleep 40
           python -m rpc_service.console command &
           wait
